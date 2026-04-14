@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
-        version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
+        version: ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
       fail-fast: false
 
     steps:
@@ -154,12 +154,20 @@ jobs:
           mkdir -p ${{ github.workspace }}/zip
           cd ${{ github.workspace }}/output/
           #         version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
-          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_${build_timestamp}.x86_64.zip ./*noble*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_${build_timestamp}.x86_64.zip ./*jammy*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_${build_timestamp}.x86_64.zip ./*focal*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_${build_timestamp}.x86_64.zip ./*trixie*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_${build_timestamp}.x86_64.zip ./*bookworm*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bullseye_${build_timestamp}.x86_64.zip ./*bullseye*.deb
+          # ubuntu:noble	24.04	Noble Numbat	2024年4月	长期支持版（LTS），当前最新
+          # ubuntu:jammy	22.04	Jammy Jellyfish	2022年4月	长期支持版（LTS）
+          # ubuntu:focal	20.04	Focal Fossa	2020年4月	长期支持版（LTS），将于2025年4月结束标准支持
+          # debian:trixie	13	Trixie	预计2025年	当前为 testing 版本
+          # debian:bookworm	12	Bookworm	2023年6月	当前稳定版（old stable）
+          # debian:bullseye	11	Bullseye	2021年8月	旧稳定版（oldstable）
+          # ubuntu:resolute 26.04
+          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}.x86_64.zip ./*resolute*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}.x86_64.zip ./*noble*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}.x86_64.zip ./*jammy*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}.x86_64.zip ./*focal*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}.x86_64.zip ./*trixie*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}.x86_64.zip ./*bookworm*.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_bullseye_11_${build_timestamp}.x86_64.zip ./*bullseye*.deb
           GITHUB_REF=${{ github.ref }}
           TAGNAME="OpenSSH_${OPENSSHVER}_${build_timestamp}"
           NAME="${TAGNAME}"
