@@ -173,6 +173,11 @@ jobs:
           NAME="${TAGNAME}"
           git tag -l --format='%(contents)' "${TAGNAME}" | tee -a ${{ github.workspace }}/RELEASE.md
           gh release delete --cleanup-tag --yes "$TAGNAME" || true
-          gh release create "$TAGNAME" --target "main" -F ${{ github.workspace }}/RELEASE.md --title "$NAME" ${{ github.workspace }}/zip/*
+          # gh release create "$TAGNAME" --target "master" -F ${{ github.workspace }}/RELEASE.md --title "$NAME" ${{ github.workspace }}/zip/*
+          gh release create "$TAGNAME" \
+              --target "${GITHUB_SHA}" \
+              -F "${{ github.workspace }}/RELEASE.md" \
+              --title "$NAME" \
+              "${{ github.workspace }}/zip/*"
         env:
           GITHUB_TOKEN: ${{ github.token }}
