@@ -94,8 +94,8 @@ jobs:
           ```
 
           ```
-          ls -l output/*.deb
-          sudo apt install -y output/*.deb
+          ls -l *.deb
+          sudo dpkg -i *.deb
           ```
           ```
           cat << 'EOF' > /etc/ssh/sshd_config
