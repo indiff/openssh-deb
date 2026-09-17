@@ -17,85 +17,240 @@ __root="$(cd "$(dirname "${__dir}")" && pwd)" # <-- change this as it depends on
 
 export DEBIAN_FRONTEND=noninteractive
 
-if [[ -n "${APT_MIRROR:-}" ]]; then
-	if [[ -f /etc/apt/sources.list ]]; then
-		# Extract the hostname from the first 'deb' line and replace it
-		original_mirror=$(awk '/^deb/{print $2}' /etc/apt/sources.list | head -n1 | cut -d/ -f3)
-		sed -i "s|${original_mirror}|${APT_MIRROR}|" /etc/apt/sources.list
-		# Comment out the security update source to avoid potential issues from mixed mirror sources
-		sed -i "/security.ubuntu.com/s|^|#|" /etc/apt/sources.list
-	fi
+# ---------------------------------------------------------------------------
+# _apt_candidate_version: get a package's candidate version string, or ""
+#
+# Deliberately does NOT use `awk '/Candidate:/{print $2; exit}'` / `head -n1`
+# to short-circuit the pipe. The Candidate line appears early in
+# `apt-cache policy` output with the Version table still to follow;
+# closing the read end early lets apt-cache hit SIGPIPE on its next
+# write and exit 141; under `set -o pipefail` that 141 becomes the
+# pipeline status even though the value was captured, tripping
+# `errexit` via the ERR trap. Letting awk consume the full (small)
+# stream avoids that race entirely rather than papering over it with
+# `|| true`.
+# ---------------------------------------------------------------------------
+_apt_candidate_version() {
+    local pkg="$1"
+    apt-cache policy "$pkg" 2>/dev/null | awk '/Candidate:/{v=$2} END{print v}'
+}
 
-	if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
-		sed -i "s|deb.debian.org|${APT_MIRROR}|" /etc/apt/sources.list.d/debian.sources
-	fi
+# ---------------------------------------------------------------------------
+# fix_apt_sources: unified APT source fixing
+# Order: fix EOL archives first, then apply APT_MIRROR.
+# If both are triggered, APT_MIRROR takes precedence but a warning is emitted.
+# ---------------------------------------------------------------------------
+# Global flag set by _fix_eol when EOL handling actually rewrote sources.
+_fix_apt_eol_fixed=0
+
+fix_apt_sources() {
+    # --- EOL archive fixing (Debian only) ---
+    _fix_eol() {
+        # Only Debian needs archive switching; Ubuntu and others are unaffected.
+        [[ -f /etc/os-release ]] || return 0
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        [[ "${ID:-}" == "debian" ]] || return 0
+
+        local codename="${VERSION_CODENAME:-}"
+
+        # Rewrite deb.debian.org / security.debian.org -> archive.debian.org
+        # in both legacy .list and DEB822 .sources files.
+        _switch_to_archive() {
+            local f
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+                [[ -f "$f" ]] || continue
+                if grep -q "deb\.debian\.org\|security\.debian\.org" "$f" 2>/dev/null; then
+                    echo "[fix-apt]   $f: switching to archive.debian.org"
+                    sed -i 's|deb\.debian\.org|archive.debian.org|g; s|security\.debian\.org|archive.debian.org|g' "$f"
+                fi
+            done
+        }
+
+        # Append ${codename}-backports if not already present (needed for dwz etc.)
+        _add_backports() {
+            if ! grep -q "${codename}-backports" /etc/apt/sources.list 2>/dev/null; then
+                echo "[fix-apt]   adding ${codename}-backports to /etc/apt/sources.list"
+                echo "deb http://archive.debian.org/debian ${codename}-backports main" >> /etc/apt/sources.list
+            else
+                echo "[fix-apt]   ${codename}-backports already present, skipping"
+            fi
+        }
+
+        # Comment out debian-security lines (archive.debian.org does not carry
+        # bullseye-security yet; avoids apt update hitting a 404).
+        _mask_security() {
+            local f
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+                [[ -f "$f" ]] || continue
+                if grep -q "debian-security" "$f" 2>/dev/null; then
+                    echo "[fix-apt]   $f: commenting out debian-security line"
+                    sed -i '/debian-security/s/^/#/' "$f"
+                fi
+            done
+        }
+
+        case "${codename}" in
+            buster|bullseye)
+                # buster and bullseye are fully archived on archive.debian.org
+                # (main, updates, backports and security), so switch
+                # unconditionally - no probing needed.
+                echo "[fix-apt] EOL codename detected: ${codename} (ID=debian), switching to archive.debian.org..."
+                _switch_to_archive
+                if [[ "$codename" == "bullseye" ]]; then
+                    _mask_security
+                fi
+                _add_backports
+                _fix_apt_eol_fixed=1
+                ;;
+            *)
+                # Not an EOL codename - nothing to do.
+                ;;
+        esac
+    }
+
+    # --- APT_MIRROR handling ---
+    _apply_mirror() {
+        if [[ -z "${APT_MIRROR:-}" ]]; then
+            return 0
+        fi
+        echo "[fix-apt] applying APT_MIRROR=${APT_MIRROR} ..."
+
+        # Legacy list files: /etc/apt/sources.list and /etc/apt/sources.list.d/*.list
+        for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+            [[ -f "$f" ]] || continue
+            # Extract hostname from first deb line and replace it
+            local original_mirror
+            original_mirror=$(awk '/^deb /{print $2}' "$f" | head -n1 | cut -d/ -f3)
+            if [[ -n "${original_mirror:-}" ]]; then
+                echo "[fix-apt]   $f: replacing host ${original_mirror} -> ${APT_MIRROR}"
+                sed -i "s|${original_mirror}|${APT_MIRROR}|g" "$f"
+            fi
+            # Comment out security.ubuntu.com to avoid mixed-mirror issues (Ubuntu only)
+            if grep -q "security.ubuntu.com" "$f" 2>/dev/null; then
+                echo "[fix-apt]   $f: commenting security.ubuntu.com"
+                sed -i "/security.ubuntu.com/s|^|#|" "$f"
+            fi
+        done
+
+        # DEB822 .sources files: replace deb.debian.org hostname with mirror
+        for f in /etc/apt/sources.list.d/*.sources; do
+            [[ -f "$f" ]] || continue
+            if grep -q "deb.debian.org" "$f" 2>/dev/null; then
+                echo "[fix-apt]   $f: deb.debian.org -> ${APT_MIRROR} (DEB822)"
+                sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"
+            fi
+        done
+    }
+
+    _fix_eol
+    _apply_mirror
+
+    if [[ "${_fix_apt_eol_fixed}" -eq 1 && -n "${APT_MIRROR:-}" ]]; then
+        echo "[fix-apt] WARNING: EOL archive fix was applied but APT_MIRROR=${APT_MIRROR} overrides archive.debian.org; you are responsible for ensuring the mirror provides the archive path."
+    fi
+}
+
+# Parse --fix-apt-only before any heavy work.
+# When set, only fix apt sources and exit 0 (lightweight CI install-test).
+FIX_APT_ONLY=0
+if [[ "${1:-}" == "--fix-apt-only" ]]; then
+    FIX_APT_ONLY=1
 fi
+
+if [[ "$FIX_APT_ONLY" -eq 1 ]]; then
+    fix_apt_sources
+    echo "[fix-apt] --fix-apt-only: done, exiting 0"
+    exit 0
+fi
+
+# Normal flow: fix sources then continue with dependency installation
+fix_apt_sources
 
 apt update
 apt upgrade -y
 apt install -y --no-install-recommends lsb-release wget sudo pkgconf build-essential fakeroot \
-	dpkg-dev debhelper debhelper-compat dh-exec dh-runit \
+	dpkg-dev debhelper debhelper-compat dh-exec dh-runit ca-certificates \
 	libaudit-dev libedit-dev libgtk-3-dev libselinux1-dev libsystemd-dev \
 	libkrb5-dev libpam0g-dev libwrap0-dev
 
-if [[ $(apt-cache search --names-only 'libfido2-dev' | wc -l) -gt 0 ]]; then
+# Only install libfido2-dev when it is available in the default archive
+# (priority 500). If it only exists in backports (priority 100, e.g. Debian 10
+# buster), building against it would produce a libfido2-1 runtime dependency
+# that a stock target system cannot satisfy.
+if [[ $(apt-cache policy libfido2-dev 2>/dev/null | grep -cE ' 500$') -gt 0 ]]; then
 	apt install -y libfido2-dev libcbor-dev
 fi
 
-
-# install the latest debhelper from debian sid by adding debian sources
-_DEBIAN_DEBHELPER() {
-
-    local __coreutils_ver="$(dpkg-query -f '${Version}' -W coreutils || true)"
-    [[ -z $__coreutils_ver ]] && __coreutils_ver="0.0.0"
-    echo "DEBUG: __coreutils_ver:$__coreutils_ver"
-
-    # Note: with coreutils < 9.5, `cp --update=none` is not supported.
-    # But the latest debhelper generate such commands.
-    # Using the latest debhelper would fail.
-    if dpkg --compare-versions "$__coreutils_ver" lt '9.5~'; then
-        sudo apt install -y --allow-downgrades "$__dir"/builddep/*.deb
-        return 0
-    fi
-
-    DEBIAN_SOURCE="http://deb.debian.org/debian/"
-    [[ -n "${APT_MIRROR:-}" ]] && \
-        DEBIAN_SOURCE="http://${APT_MIRROR}/debian/"
-
-    # Download Debian sid GPG key
-    wget -O /usr/share/keyrings/debian-sid.gpg https://deb.debian.org/debian/dists/sid/Release.gpg
-
-    # Add Debian sid source with the GPG key
-    echo "deb [signed-by=/usr/share/keyrings/debian-sid.gpg] $DEBIAN_SOURCE sid main" > /etc/apt/sources.list.d/debian-sid.list
-
-    apt update
-    apt install -y debhelper
-    rm /etc/apt/sources.list.d/debian-sid.list
-}
-
-__debhelper_ver="$(dpkg-query -f '${Version}' -W debhelper || true)"
-[[ -z $__debhelper_ver ]] && __debhelper_ver="0.0.0"
-echo "DEBUG: __debhelper_ver:$__debhelper_ver"
-if dpkg --compare-versions "$__debhelper_ver" lt '13.12~'; then
-   # dh-sequence-movetousr was added to debhelper in 13.11.7
-   sudo apt install -y "$__dir"/builddep/*.deb
+# libcrypt-dev only exists on distros where libxcrypt was split out of libc
+if [[ $(apt-cache search --names-only 'libcrypt-dev' | wc -l) -gt 0 ]]; then
+	apt install -y libcrypt-dev
 fi
 
-#CODE_NAME=$(lsb_release -sc)
-# if [ "${CODE_NAME}" != "focal" ]; then
-#     apt install -y dh-virtualenv
-# fi
-# case ${CODE_NAME} in
-#     # dists with coreutils >= 9.5 can use the latest debhelper from debian sid
-#     trixie)
-#         _DEBIAN_DEBHELPER
-#         ;;
-#     plucky|questing|resolute)
-#         _DEBIAN_DEBHELPER
-#         ;;
-#     *)
-#         echo "$CODE_NAME does NOT NEED to add Debian sources."
-#         ;;
-# esac
+
+# Old distros ship a debhelper too old to build the sid OpenSSH source
+# (dh-sequence-movetousr needs >= 13.11.7). The sid .debs are downloaded on
+# the host by pullsrc.sh into builddep/ (gitignored) and installed here.
+# No sid apt source is configured inside the container: expired GPG/CA and
+# dependency churn make that fragile on old distros.
+__debhelper_ver="$(dpkg-query -f '${Version}' -W debhelper || true)"
+[[ -z $__debhelper_ver ]] && __debhelper_ver="0.0.0"
+if dpkg --compare-versions "$__debhelper_ver" lt '13.12~'; then
+   if ! ls "$__dir"/builddep/debhelper_*_all.deb >/dev/null 2>&1; then
+       echo "ERROR: builddep/debhelper_*.deb missing. Run ./pullsrc.sh on the host first (it downloads them into builddep/)." >&2
+       exit 1
+   fi
+
+   # debhelper needs dwz >= 0.12.20190711, newer than some distros ship
+   # (Ubuntu 18.04 has 0.12-2): pull it from the distro backports pocket.
+   __dwz_ver="$(_apt_candidate_version dwz)"
+   [[ -z $__dwz_ver || $__dwz_ver == "(none)" ]] && __dwz_ver=0
+   if dpkg --compare-versions "$__dwz_ver" lt '0.12.20190711'; then
+       apt install -y -t "$(lsb_release -sc)-backports" dwz
+   fi
+
+   apt install -y --allow-downgrades "$__dir"/builddep/*.deb
+
+   # debhelper >= 13.27 restores its bucket files with `cp --update=none`,
+   # which coreutils only learned in 9.3. On the older coreutils shipped by
+   # these distros `-n` has identical semantics (upstream itself used
+   # `cp -an` at these two Dh_Lib.pm call sites until 13.26), so rewrite it.
+   __coreutils_ver="$(dpkg-query -f '${Version}' -W coreutils || true)"
+   [[ -z $__coreutils_ver ]] && __coreutils_ver="0.0.0"
+   if dpkg --compare-versions "$__coreutils_ver" lt '9.3~'; then
+       sed -i "s/'--update=none'/'-n'/g" /usr/share/perl5/Debian/Debhelper/Dh_Lib.pm
+   fi
+
+   # debhelper >= 14 declares `use v5.28` (Dh_Lib.pm, dh_assistant) and uses
+   # `state` with initializers (perl >= 5.28); downgrade both for older perls
+   # (Ubuntu 18.04: 5.26). Bare `state $x;` / `state %h;` work on 5.26.
+   __perl_ver="$(perl -MConfig -e 'print $Config{version}')"
+   if dpkg --compare-versions "$__perl_ver" lt '5.28'; then
+       sed -i -E 's/^(\s*)state\s+([%@][^=]+=)/\1my \2/; s/^(\s*)state\s+\(([^)]+)\)/\1my (\2)/' /usr/share/perl5/Debian/Debhelper/Dh_Lib.pm
+       sed -i 's/^use v5\.28;/use v5.26;/' /usr/share/perl5/Debian/Debhelper/Dh_Lib.pm /usr/bin/dh_assistant /usr/bin/dh_missing
+   fi
+
+   # debhelper hardcodes versioned deps on init-system-helpers that old distros
+   # predate (Ubuntu 18.04: 1.51); the subcommands used are all supported there.
+   __ish_ver="$(_apt_candidate_version init-system-helpers)"
+   [[ -z $__ish_ver || $__ish_ver == "(none)" ]] && __ish_ver=0
+   if dpkg --compare-versions "$__ish_ver" lt '1.52'; then
+       sed -i "s/\">= 1\.52\"/\">= $__ish_ver\"/; s/\">= 1\.66~\"/\">= $__ish_ver\"/" /usr/bin/dh_installsystemduser
+   fi
+   # invoke-rc.d only learned --skip-systemd-native in init-system-helpers 1.54;
+   # drop the option on older distros (dh_installinit then also omits its
+   # Pre-Depends on init-system-helpers (>= 1.54~) automatically).
+   if dpkg --compare-versions "$__ish_ver" lt '1.54~'; then
+       sed -i "s/compat(11) ? '' : '--skip-systemd-native '/''/" /usr/bin/dh_installinit
+   fi
+
+   # On non-merged-usr distros (e.g. Ubuntu 18.04) deb-systemd-helper only
+   # searches /lib/systemd/system, but debhelper installs units to
+   # /usr/lib: keep units in /lib so services actually get enabled.
+   # (debhelper >= 14 also uses the ${tmpdir} brace form; rewrite both.)
+   if [ ! -L /lib ]; then
+       sed -i 's|$tmpdir/usr/lib/systemd/system|$tmpdir/lib/systemd/system|g; s|${tmpdir}/usr/lib/systemd/system|${tmpdir}/lib/systemd/system|g' /usr/bin/dh_installsystemd
+   fi
+ fi
 
 exit 0

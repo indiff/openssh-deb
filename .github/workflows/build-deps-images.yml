@@ -1,0 +1,68 @@
+name: Build and Push Dependency Images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+    paths:
+      - 'install_deps.sh'
+      - 'docker/Dockerfile.deps'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # amd64 和 arm64 都用各自架构的原生 runner 构建（和 create-release.yml 的策略保持一致），
+  # 不使用 QEMU 模拟，避免影响构建速度。
+  build:
+    # Allow skipping with "[skip ci]" in the head commit message on push.
+    # workflow_dispatch always runs (no head_commit in that event).
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "ubuntu:bionic", "debian:trixie", "debian:bookworm", "debian:bullseye", "debian:buster"]
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Fetch debhelper .debs into build context
+        run: ./pullsrc.sh debhelper
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: vars
+        run: |
+          CODENAME=$(echo "${{ matrix.version }}" | cut -d':' -f2)
+          ARCH="amd64"
+          [[ "${{ matrix.os }}" == *arm* ]] && ARCH="arm64"
+          echo "codename=${CODENAME}" >> $GITHUB_OUTPUT
+          echo "arch=${ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./docker/Dockerfile.deps
+          build-args: |
+            BASE_IMAGE=${{ matrix.version }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:deps-${{ steps.vars.outputs.codename }}-${{ steps.vars.outputs.arch }}
+          cache-from: type=gha,scope=deps-${{ steps.vars.outputs.codename }}-${{ steps.vars.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=deps-${{ steps.vars.outputs.codename }}-${{ steps.vars.outputs.arch }}

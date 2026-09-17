@@ -1,58 +1,101 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Create release
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   # push:
   #   tags: [ "v*" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: write
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
-        version: ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
+        version: ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm"] # , "debian:bullseye"
       fail-fast: false
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: "Compile ${{ matrix.version }} on ${{ matrix.os }}"
+      - name: Set image tag
+        id: vars
+        run: |
+          CODENAME=$(echo "${{ matrix.version }}" | cut -d':' -f2)
+          ARCH="amd64"
+          [[ "${{ matrix.os }}" == *arm* ]] && ARCH="arm64"
+          echo "arch=${ARCH}" >> $GITHUB_OUTPUT
+          echo "codename=${CODENAME}" >> $GITHUB_OUTPUT
+          echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:deps-${CODENAME}-${ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull prebuilt dependency image
+        run: docker pull ${{ steps.vars.outputs.image }}
+
+      - name: Compile ${{ matrix.version }} on ${{ matrix.os }}
         run: |
           ./pullsrc.sh
-          docker run --rm -v ${{ github.workspace }}:/work -w /work library/${{ matrix.version }} bash -c "./install_deps.sh && ./compile.sh"
+          docker run --rm -v ${{ github.workspace }}:/work -w /work ${{ steps.vars.outputs.image }} bash -c "./compile.sh"
 
-      - name: "Install test with ${{ matrix.version }}"
+      - name: Install test with ${{ matrix.version }}
         run: |
-          docker run --rm -v ${{ github.workspace }}:/work -w /work library/${{ matrix.version }} bash -c "apt update && apt install -y --no-install-recommends ./output/*.deb && ssh -V"
+          docker run --rm -v ${{ github.workspace }}:/work -w /work library/${{ matrix.version }} bash -c "
+            # EOL archive fix via install_deps.sh --fix-apt-only
+            bash /work/install_deps.sh --fix-apt-only &&
+            apt update -qq >/dev/null 2>&1 &&
+            apt install -y --no-install-recommends ./output/*.deb && ssh -V"
 
-      - name: Set artifact name
-        id: artifact
-        run: echo "name=$(echo ${{ matrix.version }} | sed 's/:/-/g')-${{ matrix.os }}" >> $GITHUB_OUTPUT
+      - name: Pack .deb files into tar.gz
+        id: pack
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          CODENAME=$(echo "${{ matrix.version }}" | cut -d':' -f2)
 
-      - uses: actions/upload-artifact@v4
+          ARCH="amd64"
+          [[ "${{ matrix.os }}" == *arm* ]] && ARCH="arm64"
+
+          cd ${{ github.workspace }}/output
+          tar -cvzf ../openssh-${TAG_NAME}-${CODENAME}-${ARCH}.tar.gz *.deb
+
+          SAFE_VERSION=$(echo "${{ matrix.version }}" | sed 's/:/-/g')
+          echo "artifact_name=${SAFE_VERSION}-${ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.artifact.outputs.name }}
-          path: ${{ github.workspace }}/output/*.deb
+          name: upload-${{ steps.pack.outputs.artifact_name }}
+          path: ${{ github.workspace }}/openssh-*.tar.gz
 
   create_release:
-    # if: ${{ github.ref == 'refs/heads/master' }}
     needs: build
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download all archives
+        uses: actions/download-artifact@v7
         with:
           path: ./output
           merge-multiple: true
@@ -121,12 +164,12 @@ jobs:
           mkdir -p ${{ github.workspace }}/zip
           cd ${{ github.workspace }}/output/
           #         version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
-          # ubuntu:noble	24.04	Noble Numbat	2024年4月	长期支持版（LTS），当前最新
-          # ubuntu:jammy	22.04	Jammy Jellyfish	2022年4月	长期支持版（LTS）
-          # ubuntu:focal	20.04	Focal Fossa	2020年4月	长期支持版（LTS），将于2025年4月结束标准支持
-          # debian:trixie	13	Trixie	预计2025年	当前为 testing 版本
-          # debian:bookworm	12	Bookworm	2023年6月	当前稳定版（old stable）
-          # debian:bullseye	11	Bullseye	2021年8月	旧稳定版（oldstable）
+          # ubuntu:noble	24.04	Noble Numbat	2024��4��	����֧�ְ棨LTS������ǰ����
+          # ubuntu:jammy	22.04	Jammy Jellyfish	2022��4��	����֧�ְ棨LTS��
+          # ubuntu:focal	20.04	Focal Fossa	2020��4��	����֧�ְ棨LTS��������2025��4�½�����׼֧��
+          # debian:trixie	13	Trixie	Ԥ��2025��	��ǰΪ testing �汾
+          # debian:bookworm	12	Bookworm	2023��6��	��ǰ�ȶ��棨old stable��
+          # debian:bullseye	11	Bullseye	2021��8��	���ȶ��棨oldstable��
           # ubuntu:resolute 26.04
           zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}.x86_64.zip ./*resolute*.deb
           zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}.x86_64.zip ./*noble*.deb
