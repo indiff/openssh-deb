@@ -126,17 +126,23 @@ jobs:
           export build_timestamp="$(date +'%Y%m%d_%H%M')"
           echo -e "> Automated release OpenSSH_${OPENSSHVER} with OpenSSL_${OPENSSLVER}.\n" > ${{ github.workspace }}/RELEASE.md
           cat <<'EOF' >> ${{ github.workspace }}/RELEASE.md
+          # https://github.com/indiff/openssh-deb/releases/download/OpenSSH_10.5p1_20260917_1706/openssh_resolute_26.04_20260917_1706_amd64.tar.gz
           # Proxy download:
           ```bash
-          curl -#Lo openssh-indiff.zip "https://ghfast.top/https://github.com/indiff/openssh-deb/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp.x86_64.zip"
+          curl -#Lo openssh_resolute_26.04_shitstamp_amd64.tar.gz "https://ghfast.top/https://github.com/indiff/openssh-deb/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp_amd64.tar.gz" --insecure
           ```
-            
+         
+          ```bash
+          wget --no-check-certificate "https://ghfast.top/https://github.com/indiff/openssh-deb/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp_amd64.tar.gz" -O openssh_resolute_26.04_shitstamp_amd64.tar.gz 
+          ```
+
           # Direct download:
           ```bash         
-          curl -#Lo openssh-indiff.zip "https://github.com/indiff/openssh-rpms/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp.x86_64.zip"
+          curl -#Lo openssh_resolute_26.04_shitstamp_amd64.tar.gz "https://github.com/indiff/openssh-rpms/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp_amd64.tar.gz"
           ```
 
           ```
+          tar -xvf openssh_resolute_26.04_shitstamp_amd64.tar.gz
           ls -l *.deb
           sudo dpkg -i *.deb
           ```
