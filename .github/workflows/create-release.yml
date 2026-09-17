@@ -163,6 +163,7 @@ jobs:
           sed -i 's/shitshit/EOF/g' RELEASE.md
           mkdir -p ${{ github.workspace }}/zip
           cd ${{ github.workspace }}/output/
+          ls -lh
           #         version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
           # ubuntu:noble	24.04	Noble Numbat	2024年4月	长期支持版（LTS），当前最新
           # ubuntu:jammy	22.04	Jammy Jellyfish	2022年4月	长期支持版（LTS）
@@ -185,7 +186,7 @@ jobs:
           zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}_arm64.zip ./*focal*_arm64.deb
           zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}_arm64.zip ./*trixie*_arm64.deb
           zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}_arm64.zip ./*bookworm*_arm64.deb
-          
+
           GITHUB_REF=${{ github.ref }}
           TAGNAME="OpenSSH_${OPENSSHVER}_${build_timestamp}"
           NAME="${TAGNAME}"
