@@ -157,12 +157,18 @@ jobs:
           KexAlgorithms -diffie-hellman-group1-sha1,diffie-hellman-group1-sha256,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group15-sha256,diffie-hellman-group15-sha512,diffie-hellman-group16-sha256,diffie-hellman-group16-sha512,diffie-hellman-group17-sha512,diffie-hellman-group18-sha512,diffie-hellman-group-exchange-sha1,diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha512
           shitshit
           ```
+          ```
+          sudo systemctl daemon-reload
+          sudo systemctl enable ssh.socket
+          sudo systemctl restart ssh.socket
+          ```
           EOF
           sed -i "s/shitver/${OPENSSHVER}/g" RELEASE.md
           sed -i "s/shitstamp/${build_timestamp}/g" RELEASE.md
           sed -i 's/shitshit/EOF/g' RELEASE.md
           mkdir -p ${{ github.workspace }}/zip
           cd ${{ github.workspace }}/output/
+          GITHUB_REF=${{ github.ref }}
           ls -lh
           #         version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
           # ubuntu:noble	24.04	Noble Numbat	2024年4月	长期支持版（LTS），当前最新
@@ -173,26 +179,38 @@ jobs:
           # debian:bullseye	11	Bullseye	2021年8月	旧稳定版（oldstable）
           # ubuntu:resolute 26.04
           #  ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm"] # , "debian:bullseye"
-          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}_amd64.zip ./*resolute*_amd64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}_amd64.zip ./*noble*_amd64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}_amd64.zip ./*jammy*_amd64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}_amd64.zip ./*focal*_amd64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}_amd64.zip ./*trixie*_amd64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}_amd64.zip ./*bookworm*_amd64.deb
-
-          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}_arm64.zip ./*resolute*_arm64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}_arm64.zip ./*noble*_arm64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}_arm64.zip ./*jammy*_arm64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}_arm64.zip ./*focal*_arm64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}_arm64.zip ./*trixie*_arm64.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}_arm64.zip ./*bookworm*_arm64.deb
-
-          GITHUB_REF=${{ github.ref }}
           TAGNAME="OpenSSH_${OPENSSHVER}_${build_timestamp}"
           NAME="${TAGNAME}"
+          declare -A VER_MAP=(
+              [resolute]="26.04"
+              [noble]="24.04"
+              [jammy]="22.04"
+              [focal]="20.04"
+              [trixie]="13"
+              [bookworm]="12"
+          )
+
+          for file in openssh*.tar.gz; do
+              # 提取 codename 和 arch
+              base="${file#openssh-master-}"      # resolute-amd64.tar.gz
+              arch="${base##*-}"                  # amd64.tar.gz
+              arch="${arch%.tar.gz}"              # amd64
+              codename="${base%-*}"               # resolute
+
+              version="${VER_MAP[$codename]}"
+              if [[ -z "$version" ]]; then
+                  echo "⚠️  跳过未知发行版: $file"
+                  continue
+              fi
+
+              new_name="openssh_${codename}_${version}_${build_timestamp}_${arch}.tar.gz"
+              echo "mv '$file' -> '$new_name'"
+              mv -- "$file" "$new_name"
+          done
+          
           git tag -l --format='%(contents)' "${TAGNAME}" | tee -a ${{ github.workspace }}/RELEASE.md
           gh release delete --cleanup-tag --yes "$TAGNAME" || true
-          gh release create "$TAGNAME" --target "master" -F ${{ github.workspace }}/RELEASE.md --title "$NAME" ${{ github.workspace }}/zip/*
+          gh release create "$TAGNAME" --target "master" -F ${{ github.workspace }}/RELEASE.md --title "$NAME" ${{ github.workspace }}/output/*
           # gh release create "$TAGNAME" \
           #     --target "${GITHUB_SHA}" \
           #     -F "${{ github.workspace }}/RELEASE.md" \
