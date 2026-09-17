@@ -128,7 +128,7 @@ jobs:
           cat <<'EOF' >> ${{ github.workspace }}/RELEASE.md
           # Proxy download:
           ```bash
-          curl -#Lo openssh-indiff.zip "https://ghproxy.it/https://github.com/indiff/openssh-deb/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp.x86_64.zip"
+          curl -#Lo openssh-indiff.zip "https://ghfast.top/https://github.com/indiff/openssh-deb/releases/download/OpenSSH_shitver_shitstamp/openssh_resolute_26.04_shitstamp.x86_64.zip"
           ```
             
           # Direct download:
@@ -164,20 +164,28 @@ jobs:
           mkdir -p ${{ github.workspace }}/zip
           cd ${{ github.workspace }}/output/
           #         version: ["ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm", "debian:bullseye"]
-          # ubuntu:noble	24.04	Noble Numbat	2024��4��	����֧�ְ棨LTS������ǰ����
-          # ubuntu:jammy	22.04	Jammy Jellyfish	2022��4��	����֧�ְ棨LTS��
-          # ubuntu:focal	20.04	Focal Fossa	2020��4��	����֧�ְ棨LTS��������2025��4�½�����׼֧��
-          # debian:trixie	13	Trixie	Ԥ��2025��	��ǰΪ testing �汾
-          # debian:bookworm	12	Bookworm	2023��6��	��ǰ�ȶ��棨old stable��
-          # debian:bullseye	11	Bullseye	2021��8��	���ȶ��棨oldstable��
+          # ubuntu:noble	24.04	Noble Numbat	2024年4月	长期支持版（LTS），当前最新
+          # ubuntu:jammy	22.04	Jammy Jellyfish	2022年4月	长期支持版（LTS）
+          # ubuntu:focal	20.04	Focal Fossa	2020年4月	长期支持版（LTS），将于2025年4月结束标准支持
+          # debian:trixie	13	Trixie	预计2025年	当前为 testing 版本
+          # debian:bookworm	12	Bookworm	2023年6月	当前稳定版（old stable）
+          # debian:bullseye	11	Bullseye	2021年8月	旧稳定版（oldstable）
           # ubuntu:resolute 26.04
-          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}.x86_64.zip ./*resolute*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}.x86_64.zip ./*noble*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}.x86_64.zip ./*jammy*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}.x86_64.zip ./*focal*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}.x86_64.zip ./*trixie*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}.x86_64.zip ./*bookworm*.deb
-          zip -q -9 ${{ github.workspace }}/zip/openssh_bullseye_11_${build_timestamp}.x86_64.zip ./*bullseye*.deb
+          #  ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm"] # , "debian:bullseye"
+          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}_amd64.zip ./*resolute*_amd64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}_amd64.zip ./*noble*_amd64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}_amd64.zip ./*jammy*_amd64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}_amd64.zip ./*focal*_amd64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}_amd64.zip ./*trixie*_amd64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}_amd64.zip ./*bookworm*_amd64.deb
+
+          zip -q -9 ${{ github.workspace }}/zip/openssh_resolute_26.04_${build_timestamp}_arm64.zip ./*resolute*_arm64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_noble_24.04_${build_timestamp}_arm64.zip ./*noble*_arm64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_jammy_22.04_${build_timestamp}_arm64.zip ./*jammy*_arm64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_focal_20.04_${build_timestamp}_arm64.zip ./*focal*_arm64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_trixie_13_${build_timestamp}_arm64.zip ./*trixie*_arm64.deb
+          zip -q -9 ${{ github.workspace }}/zip/openssh_bookworm_12_${build_timestamp}_arm64.zip ./*bookworm*_arm64.deb
+          
           GITHUB_REF=${{ github.ref }}
           TAGNAME="OpenSSH_${OPENSSHVER}_${build_timestamp}"
           NAME="${TAGNAME}"
