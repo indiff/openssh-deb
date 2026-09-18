@@ -166,6 +166,13 @@ jobs:
           sudo systemctl enable ssh.socket
           sudo systemctl restart ssh.socket
           ```
+          # Rolling Back to Default
+          ```
+          sudo apt update
+          V=$(apt-cache madison ssh | awk 'NR==1 {print $3}')
+          sudo apt install --allow-downgrades -y \
+          ssh=$V openssh-client=$V openssh-server=$V openssh-sftp-server=$V
+          ```
           EOF
           sed -i "s/shitver/${OPENSSHVER}/g" RELEASE.md
           sed -i "s/shitstamp/${build_timestamp}/g" RELEASE.md
