@@ -22,7 +22,7 @@ Prebuilt packages are tested and published via GitHub Actions. Other architectur
 | **Debian 12** | `bookworm` | `amd64` / `arm64` | ✅ Fully supported |
 | **Debian 11** | `bullseye` | `amd64` / `arm64` | ✅ Fully supported |
 | **Debian 10** | `buster` | `amd64` / `arm64` | ✅ Fully supported |
-| UnionTech OS Desktop 20 Home | *based on buster / glibc 2.28* | — | ⚠️ See [extra steps](#uniontech-os-desktop-20-home) |
+| UnionTech OS Server V20 | *based on buster / glibc 2.28* | — | ⚠️ See [extra steps](#uniontech-os-server-v20) |
 | Kylin V10 SP1 | *based on focal / glibc 2.31* | — | ⚠️ See [extra steps](#kylin-v10-sp1) |
 
 > **Need another architecture?** Any Debian/Ubuntu derivative with a compatible glibc can build from source — see [Build from Source](#build-from-source).
@@ -35,8 +35,8 @@ Versions are pinned in [`version.env`](version.env). When `OPENSSH_SIDPKG` is em
 
 | Component | Version | Source |
 | :--- | :--- | :--- |
-| **OpenSSH** | `10.5p1-1` | Debian Sid — auto-tracked |
-| **OpenSSL** | `3.5.8` | Static link on older distros, dynamic link on newer ones |
+| **OpenSSH** | `10.6p1-1` | Debian Sid — auto-tracked |
+| **OpenSSL** | `3.5.9` | Static link on older distros, dynamic link on newer ones |
 
 The built package version is suffixed with the target codename (e.g. `10.5p1-1~noble`) so it is clearly distinguishable from the distro's official package and won't be silently overwritten.
 
@@ -48,12 +48,6 @@ If your OS is in the table above, the fastest way is to install the CI-built `.d
 
 ```bash
 sudo bash -c "$(curl -L https://github.com/boypt/openssh-deb/raw/master/lazy_install.sh)"
-```
-
-Behind a firewall or need a GitHub proxy?
-
-```bash
-sudo bash -c "$(curl -L https://gh-proxy.com/github.com/boypt/openssh-deb/raw/master/lazy_install.sh)" @ gh-proxy.com
 ```
 
 The script detects your codename and architecture, downloads the matching release tarball from the [latest GitHub Release](https://github.com/boypt/openssh-deb/releases/latest), and installs it with `apt`.
@@ -179,9 +173,9 @@ Then restart `fail2ban`. `sshguard` and other tools need analogous updates — c
 
 ### Distribution-Specific Quirks
 
-#### UnionTech OS Desktop 20 Home
+#### UnionTech OS Server V20
 
-*Debian glibc 2.28-21-1+deepin-1*
+*Debian 10 based, glibc 2.28*
 
 1. Exclude `libfido2-dev` from the build-dependency install — it is not available.
 2. Manually install from `bullseye`:
