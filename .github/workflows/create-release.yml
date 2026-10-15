@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
-        version: ["ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm"] # , "debian:bullseye"
+        version: ["ubuntu:stonking", "ubuntu:resolute", "ubuntu:noble", "ubuntu:jammy", "ubuntu:focal", "debian:trixie", "debian:bookworm"] # , "debian:bullseye"
       fail-fast: false
 
     steps:
