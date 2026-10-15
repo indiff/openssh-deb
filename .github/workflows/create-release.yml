@@ -193,6 +193,7 @@ jobs:
           TAGNAME="OpenSSH_${OPENSSHVER}_${build_timestamp}"
           NAME="${TAGNAME}"
           declare -A VER_MAP=(
+              [stonking]="26.10"
               [resolute]="26.04"
               [noble]="24.04"
               [jammy]="22.04"
